@@ -35,29 +35,27 @@ class MinimizationPlugin(database: Database, driver: ExtendedProfile, securityUt
 
   private def pConfigurationType = new DoubleConfigurationType(name = i18n.text("p"), description =  i18n.text("pDesc"))
 
-  private def withRandomizedSubjectsConfigurationType = new BooleanConfigurationType(name =  i18n.text("withRandomizedSubjects"), description =  i18n.text("withRandomizedSubjectsDesc"))
-
-  private def biasedCoinMinimizationConfigurationType = new BooleanConfigurationType(name =  i18n.text("biasedCoinMinimization"), description =  i18n.text("biasedCoinMinimizationDesc"))
-
 
   def randomizationConfigurationOptions(): (List[ConfigurationType[Any]], Map[String,List[Criterion[_ <: Any, Constraint[_ <: Any]]]]) = {
-    (List(pConfigurationType, withRandomizedSubjectsConfigurationType, biasedCoinMinimizationConfigurationType), Map())
+    (List(pConfigurationType), Map())
   }
 
   def getRandomizationConfigurations(id: Int): List[ConfigurationProperty[Any]] = {
     val method = minimizationDao.get(id).toOption.getOrElse(return Nil).getOrElse(return Nil)
-    List(new ConfigurationProperty[Any](pConfigurationType, method.p),
-      new ConfigurationProperty[Any](withRandomizedSubjectsConfigurationType, method.withRandomizedSubjects),
-      new ConfigurationProperty[Any](biasedCoinMinimizationConfigurationType, method.biasedCoinMinimization)
+    List(new ConfigurationProperty[Any](pConfigurationType, method.p)
     )
   }
 
   def randomizationMethod(random: RandomGenerator, trial: Trial, configuration: List[ConfigurationProperty[Any]]): Validation[String, RandomizationMethod] = {
     if (configuration.isEmpty) Failure(i18n.text("noConfAvailable"))
-    else Success(new Minimization(p = configuration(0).value.asInstanceOf[Double],
-      withRandomizedSubjects = configuration(1).value.asInstanceOf[Boolean],
-      biasedCoinMinimization = configuration(2).value.asInstanceOf[Boolean]
-    )(random = random))
+    else {
+      val seedEqualScore = (new MersenneTwister()).nextLong()
+
+      Success(new Minimization(p = configuration(0).value.asInstanceOf[Double],
+      seedRandomEqualScore =  seedEqualScore)
+      (random = random,
+       randomEqualScore = new MersenneTwister(seedEqualScore)))
+    }
   }
 
   def databaseTables(): Option[DDL] = {

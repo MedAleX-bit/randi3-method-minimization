@@ -2,8 +2,6 @@ package org.randi3.randomization
 
 import org.randi3.model._
 import org.apache.commons.math3.random._
-import scala.collection.mutable.ListBuffer
-
 
 import scala.collection.mutable
 
@@ -12,62 +10,137 @@ import org.randi3.model.criterion.constraint.Constraint
 import org.randi3.model.criterion.Criterion
 
 
-case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, withRandomizedSubjects: Boolean = false, biasedCoinMinimization: Boolean = false)(val random: RandomGenerator) extends RandomizationMethod {
+case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, seedRandomEqualScore: Long)(val random: RandomGenerator, val  randomEqualScore: RandomGenerator) extends RandomizationMethod {
 
 
+  var probabilitiesPerPreferredTreatment: mutable.Map[Int, mutable.Map[Int, Double]] = null
 
-  var probabilitiesPerPreferredTreatment: mutable.Map[TreatmentArm, mutable.Map[TreatmentArm, Double]] = null
+  var countConstraints: Map[Constraint[Any], mutable.Map[Int, Double]] = null
 
-  var countConstraints: mutable.Map[Constraint[Any], mutable.Map[TreatmentArm, Double]] = null
-
-  var countTrialSites: mutable.Map[TrialSite, mutable.Map[TreatmentArm, Double]] = null
+  var countTrialSites: Map[TrialSite, mutable.Map[Int, Double]] = null
 
 
   def randomize(trial: Trial, subject: TrialSubject): TreatmentArm = {
-    if (biasedCoinMinimization){
-      if(probabilitiesPerPreferredTreatment == null) initProbabilitiesPerPreferredTreatment(trial)
-      doRandomizeBiasedCoinMinimization(trial, subject)
-    }else{
-      doRandomizeNaiveMinimization(trial, subject)
-    }
+    if (probabilitiesPerPreferredTreatment == null) initProbabilitiesPerPreferredTreatment(trial)
+    if (countConstraints == null) initCountPerConstraint(trial)
+    if (countTrialSites == null) initCountTrialSite(trial)
+
+    doRandomizeBiasedCoinMinimization(trial, subject)
+
   }
 
+  private def doRandomizeBiasedCoinMinimization(trial: Trial, subject: TrialSubject): TreatmentArm = {
 
-  private def doRandomizeNaiveMinimization(trial: Trial, subject: TrialSubject): TreatmentArm = {
-    //calculate the p-values for this allocation
-    val arms = trial.treatmentArms
-    val a = new ListBuffer[Double]()
+    val relevantConstraints: Map[Constraint[Any], mutable.Map[Int, Double]] = countConstraints.filter(entry => {
+      val constraintIds = subject.properties.map(prop => prop.criterion.asInstanceOf[Criterion[Any, Constraint[Any]]].stratify(prop.value).get).map(constraint => constraint.id)
+      constraintIds.contains(entry._1.id)
+    })
 
-    for (arm <- trial.treatmentArms) {
-      val plannedSubjects = if (withRandomizedSubjects) (arm.plannedSize - arm.subjects.size) else arm.plannedSize
-      var sum = 0.0
-      var totalPlannedSubjects = 0.0
-      for (arm1 <- trial.treatmentArms) {
-        if (!arm.equals(arm1)) {
-          sum += (if (withRandomizedSubjects) (arm1.plannedSize - arm1.subjects.size) else arm1.plannedSize)
+
+    val relevantTrialSite: Map[Int, Double] = if (trial.isStratifiedByTrialSite) {
+      countTrialSites.get(subject.trialSite).get.toMap
+    } else Map()
+
+
+    val listAllRelevantValues: List[Map[Int, Double]] = if (relevantTrialSite.isEmpty) {
+      relevantConstraints.map(value => value._2.toMap).toList
+    } else relevantTrialSite :: relevantConstraints.map(value => value._2.toMap).toList
+
+
+
+    val imbalanceScores: Map[Int, Double] = trial.treatmentArms.map(arm => {
+      def marginalBalanceNumerator(adjustedCounts: List[Double]): Double = {
+        if (adjustedCounts.size <= 1) 0.0
+        else {
+          (adjustedCounts.tail.map(nextValue => scala.math.abs(adjustedCounts.head - nextValue)).sum
+            + marginalBalanceNumerator(adjustedCounts.tail))
         }
-        totalPlannedSubjects += arm1.plannedSize
       }
-      //Formula from: "Randomization by minimization for unbalanced treatment allocation" Baoguang Han, et al.
-      var value = plannedSubjects * p + (1.0 - p) / (trial.treatmentArms.size - 1.0) * sum
-      value = value / (if (withRandomizedSubjects) totalPlannedSubjects - trial.plannedSubjects else totalPlannedSubjects)
-      a.append(value)
 
+      val marginalBalances = listAllRelevantValues.map(relevantValue => {
+
+        val adjustedCounts = relevantValue.map(entry => {
+          val adjustedCount = if (entry._1 == arm.id) (entry._2 + 1.0) else entry._2
+          val normalizedCount = adjustedCount / trial.treatmentArms.find(tmpArm => tmpArm.id == entry._1).get.plannedSize
+          entry._1 -> normalizedCount
+        })
+
+        val numerator = marginalBalanceNumerator(adjustedCounts.toList.map(entry => entry._2))
+        val denominator = (trial.treatmentArms.size - 1.0) * adjustedCounts.toList.map(entry => entry._2).sum
+        numerator / denominator
+      })
+
+      arm.id -> marginalBalances.sum
+    }).toMap
+
+    val minValue = imbalanceScores.map(entry => entry._2).min
+
+    val armsWithSameScore = imbalanceScores.filter(entry => entry._2 == minValue).map(entry => entry._1).toList
+
+
+    //get all with min value
+    val a: List[(TreatmentArm, Double)] = {
+      //==1 Default case one treatment arm with smallest imbalance score
+      //all treatment with same score, calculate probability with ratio
+      //other cases take randomly one treatment
+      if (armsWithSameScore.size == trial.treatmentArms.size) {
+
+        trial.treatmentArms.map(arm => arm -> ((arm.plannedSize * 1.0) / (trial.plannedSubjects * 1.0)))
+
+      } else {
+        val preferredArm = if (armsWithSameScore.size == 1) {
+          trial.treatmentArms.find(arm => arm.id == armsWithSameScore(0)).get
+        } else {
+          val armObjectsWithSameScore = trial.treatmentArms.filter(arm => armsWithSameScore.contains(arm.id))
+          armObjectsWithSameScore(randomEqualScore.nextInt(armObjectsWithSameScore.size))
+        }
+
+        trial.treatmentArms.map(arm => arm -> probabilitiesPerPreferredTreatment.get(preferredArm.id).get.get(arm.id).get)
+
+      }
     }
+
     //get Treatment arm with calculated p-values
     val randomNumber = random.nextDouble()
+
     var sum: Double = 0.0
     var i: Int = 0
     var arm: TreatmentArm = null
 
     while (i < a.size && arm == null) {
-      sum += a(i)
+      sum += a(i)._2
       if (randomNumber < sum) {
-        arm = arms(i)
+        arm = a(i)._1
       }
       i += 1
     }
-    return arm
+
+
+    //increase counter
+    for (constraint <- relevantConstraints.keySet) {
+      countConstraints.get(constraint).get.put(arm.id, (countConstraints.get(constraint).get.get(arm.id).get + 1.0))
+    }
+    if (trial.isStratifiedByTrialSite) {
+      countTrialSites.get(subject.trialSite).get.put(arm.id, countTrialSites.get(subject.trialSite).get.get(arm.id).get + 1.0)
+    }
+
+    arm
+  }
+
+
+  private def initCountPerConstraint(trial: Trial) {
+
+    countConstraints = trial.criterions.flatMap(criterion => criterion.strata.toSeq).map(constraint => {
+      constraint.asInstanceOf[Constraint[Any]] -> mutable.Map(trial.treatmentArms.map(arm => arm.id -> 0.0).toSeq: _*)
+    }).toMap
+
+  }
+
+  private def initCountTrialSite(trial: Trial) {
+
+    countTrialSites = trial.participatingSites.map(site => {
+      site -> mutable.Map(trial.treatmentArms.map(arm => arm.id -> 0.0).toSeq: _*)
+    }).toMap
   }
 
   /**
@@ -78,233 +151,64 @@ case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, wit
     probabilitiesPerPreferredTreatment = new mutable.HashMap()
 
 
-    var minArm = trial.treatmentArms.head
-
-    for (arm <- trial.treatmentArms) {
-      if (arm.plannedSize < minArm.plannedSize) {
-        minArm = arm
-      }
-    }
+    val minArm = trial.treatmentArms.min(Ordering.by((_: TreatmentArm).plannedSize))
 
     for (prefArm <- trial.treatmentArms) {
-      val probabilities: mutable.Map[TreatmentArm, Double] = new mutable.HashMap()
+      val probabilities: mutable.Map[Int, Double] = new mutable.HashMap()
 
-      var pH_pref = 0.0
-      var denuminator = 0.0
-      var numinator = 0.0
+      var denominatorPH_pref = 0.0
+      var numeratorPH_pref = 0.0
 
       for (arm <- trial.treatmentArms) {
         if (!arm.equals(prefArm)) {
-          denuminator += arm.plannedSize
+          denominatorPH_pref += arm.plannedSize
         }
         if (!arm.equals(trial.treatmentArms.head)) {
-          numinator += arm.plannedSize
+          numeratorPH_pref += arm.plannedSize
         }
       }
-      if (prefArm.equals(minArm)) {
-        pH_pref = p
+
+      val pH_pref = if (prefArm.equals(minArm)) {
+        p
       } else {
-        pH_pref = 1.0 - (denuminator / numinator) * (1 - p)
+        1.0 - (denominatorPH_pref / numeratorPH_pref) * (1 - p)
       }
-      numinator = 0.0
-      for (arm <- trial.treatmentArms) {
-        if (!arm.equals(prefArm)) {
-          numinator += arm.plannedSize
-        }
-      }
-      val pL_without_ri = (1 - pH_pref) / numinator
+
+      val numerator: Double = trial.treatmentArms.filter(arm => !arm.equals(prefArm))
+        .map(arm => arm.plannedSize)
+        .reduce((acc, entry) => acc + entry)
+
+      val pL_without_ri = (1 - pH_pref) / numerator
 
       for (arm <- trial.treatmentArms) {
         if (arm.equals(prefArm)) {
-          probabilities.put(arm, pH_pref)
+          probabilities.put(arm.id, pH_pref)
         } else {
-          probabilities.put(arm, (pL_without_ri * arm.plannedSize))
+          probabilities.put(arm.id, (pL_without_ri * arm.plannedSize))
         }
       }
-      probabilitiesPerPreferredTreatment.put(prefArm, probabilities)
+      probabilitiesPerPreferredTreatment.put(prefArm.id, probabilities)
     }
   }
 
 
- private def doRandomizeBiasedCoinMinimization(trial: Trial, subject: TrialSubject): TreatmentArm = {
+  /**
+   * Necessary to test the algorithm, returns the probabilities per preferred treatment arm
+   */
+  def getProbabilitiesPerPreferredTreatment(trial: Trial): mutable.Map[Int, mutable.Map[Int, Double]] = {
+    if (probabilitiesPerPreferredTreatment == null) initProbabilitiesPerPreferredTreatment(trial)
+    probabilitiesPerPreferredTreatment
+  }
 
-
-   val relevantConstraints: mutable.Map[Constraint[Any], mutable.Map[TreatmentArm, Double]] = new mutable.HashMap()
-
-   var relevantTrialSite: mutable.Map[TreatmentArm, Double] = null
-
-   if (probabilitiesPerPreferredTreatment == null) initProbabilitiesPerPreferredTreatment(trial)
-   //Counter for trial sites
-   if (trial.isStratifiedByTrialSite) {
-     if (countTrialSites == null) countTrialSites = new mutable.HashMap()
-
-     val actMap = countTrialSites.get(subject.trialSite).getOrElse({
-       val tmpMap: mutable.Map[TreatmentArm, Double] = new mutable.HashMap()
-
-       for (arm <- trial.treatmentArms) {
-         tmpMap.put(arm, 0.0);
-       }
-       countTrialSites.put(subject.trialSite, tmpMap)
-       tmpMap
-     })
-     relevantTrialSite = actMap
-   }
-
-   if (countConstraints == null) countConstraints = new mutable.HashMap()
-
-
-   //Get relevant constraints and if necessary create a new counter
-   for (prop <- subject.properties) {
-
-     val actMap = countConstraints.get((prop.criterion.asInstanceOf[Criterion[Any, Constraint[Any]]]).stratify(prop.value).get).getOrElse({
-
-       val tmpMap: mutable.HashMap[TreatmentArm, Double] = new mutable.HashMap()
-
-       for (arm <- trial.treatmentArms) {
-         tmpMap.put(arm, 0.0);
-       }
-       countConstraints.put((prop.criterion.asInstanceOf[Criterion[Any, Constraint[Any]]]).stratify(prop.value).get, tmpMap)
-       tmpMap
-     })
-
-     relevantConstraints.put((prop.criterion.asInstanceOf[Criterion[Any, Constraint[Any]]]).stratify(prop.value).get, actMap);
-   }
-
-    //calculate imbalance scores
-    val imbalacedScores: mutable.HashMap[TreatmentArm, Double] = new mutable.HashMap()
-
-    for(arm  <- trial.treatmentArms){
-      var imbalacedScore = 0.0
-
-     val listAllRelevantValues: ListBuffer[mutable.Map[TreatmentArm, Double]] = new ListBuffer()
-
-      if(trial.isStratifiedByTrialSite){
-        listAllRelevantValues.append(relevantTrialSite)
-      }
-      listAllRelevantValues.appendAll(relevantConstraints.values)
-
-      for( mapW <- listAllRelevantValues){
-        val adjustetCountsPerArm = new Array[Double] (trial.treatmentArms.size)
-
-        var  i = 0
-
-        for(actArm <- mapW.keySet){
-
-          var adjustetCount = {
-
-          if(actArm.id == arm.id){
-             mapW.get(actArm).get + 1.0
-          }else{
-             mapW.get(actArm).get
-          }
-          }
-
-          //calculate adjusted counts
-          adjustetCount = adjustetCount / actArm.plannedSize
-          adjustetCountsPerArm(i) = adjustetCount
-          i += 1
-        }
-        //calculate marginal balance
-        var marginalBalance = 0.0
-        var numerator = 0.0
-
-        for(x <- 0 until adjustetCountsPerArm.size){
-
-          for(j <- x+1 until adjustetCountsPerArm.size){
-            marginalBalance += scala.math.abs(adjustetCountsPerArm(x)-adjustetCountsPerArm(j))
-          }
-          numerator += adjustetCountsPerArm(x)
-        }
-
-        numerator+=adjustetCountsPerArm.last
-        numerator =(adjustetCountsPerArm.length-1.0) * numerator
-        marginalBalance = marginalBalance/numerator
-
-        imbalacedScore+= marginalBalance
-      }
-      imbalacedScores.put(arm, imbalacedScore)
-    }
-
-    //find preferred treatment
-    var tmpMinValue = Double.MaxValue
-
-   val armsWithSameScore: ListBuffer[TreatmentArm] = new ListBuffer()
-
-    for(arm <- imbalacedScores.keySet){
-      if(imbalacedScores.get(arm).get < tmpMinValue){
-        armsWithSameScore.clear
-        tmpMinValue = imbalacedScores.get(arm).get
-        armsWithSameScore.append(arm)
-      }else if (imbalacedScores.get(arm).get == tmpMinValue){
-        armsWithSameScore.append(arm)
-      }
-    }
-    //get all with min value
-   val a: ListBuffer[Double] = new ListBuffer()
-
-    //==1 Default case one treatment arm with smallest imbalance score
-    //all treatment with same score, calculate probability with ratio
-    //other cases take randomly one treatment
-    if(armsWithSameScore.size==1){
-      for( arm <-  trial.treatmentArms){
-        a.append(probabilitiesPerPreferredTreatment.get(armsWithSameScore(0)).get.get(arm).get)
-      }
-    }else if(armsWithSameScore.size == trial.treatmentArms.size){
-      for(arm <- trial.treatmentArms){
-        a.append(((arm.plannedSize*1.0)/(trial.plannedSubjects*1.0)))
-      }
-    }else{
-      val preferredArm = trial.treatmentArms(random.nextInt(trial.treatmentArms.size))
-      for(arm <- trial.treatmentArms){
-        a.append(probabilitiesPerPreferredTreatment.get(preferredArm).get.get(arm).get)
-      }
-    }
-
-    //get Treatment arm with calculated p-values
-    val randomNumber = random.nextDouble()
-    var sum: Double = 0.0
-    var i: Int = 0
-    var arm: TreatmentArm = null
-
-    while( i < a.size && arm == null){
-      sum+=a(i)
-      if(randomNumber < sum){
-        arm = trial.treatmentArms(i)
-        }
-        i += 1
-    }
-
-        //increase the count for the relevant constraints
-        for(constraint <- relevantConstraints.keySet){
-          countConstraints.get(constraint).get.put(arm, (countConstraints.get(constraint).get.get(arm).get +1.0))
-        }
-        if(trial.isStratifiedByTrialSite){
-        countTrialSites.get(subject.trialSite).get.put(arm, countTrialSites.get(subject.trialSite).get.get(arm).get +1.0)
-        }
-        return arm;
-   }
-
-
-//
-//
-//        /**
-//        * Necessary to test the algorithm.
-//        * @return the probabilities per preferred treatment arm
-//        */
-//        public Map<TreatmentArm, MinimizationMapElementWrapper> getProbabilitiesPerPreferredTreatment() {
-//          if(((MinimizationTempData) configuration.getTempData()).getProbabilitiesPerPreferredTreatment()==null) initProbabilitiesPerPreferredTreatment();
-//        return ((MinimizationTempData) configuration.getTempData()).getProbabilitiesPerPreferredTreatment();
-//        }
-//
-//        /**
-//        * Necessary to reset the algorithm for simulation.
-//        */
-//        public void clear(){
-//        MinimizationTempData tempData = (MinimizationTempData) configuration.getTempData();
-//        tempData.setCountConstraints(null);
-//        tempData.setCountTrialSites( null);
-//        }
-
+  //
+  //        /**
+  //        * Necessary to reset the algorithm for simulation.
+  //        */
+  //        public void clear(){
+  //        MinimizationTempData tempData = (MinimizationTempData) configuration.getTempData();
+  //        tempData.setCountConstraints(null);
+  //        tempData.setCountTrialSites( null);
+  //        }
 
 
 }
