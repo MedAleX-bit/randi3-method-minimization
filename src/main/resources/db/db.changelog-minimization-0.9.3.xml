@@ -1,4 +1,103 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-2.0.xsd">
 
+     <changeSet author="dschrimpf" id="org.randi3.method.minimization-0.9.3-1">
+              <createTable tableName="Minimization">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="Version" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="RandomizationMethodId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ProbPreferredTreatment" type="DOUBLE"/>
+            <column name="SeedRandomEqualScore" type="BIGINT">
+                  <constraints nullable="false"/>
+              </column>
+            <column name="RandomGenerator" type="BLOB">
+                      <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="dschrimpf" id="org.randi3.method.minimization-0.9.3-2">
+        <createTable tableName="MinimizationConstraint">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="MinimizationId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ConstraintId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="dschrimpf" id="org.randi3.method.minimization-0.9.3-3">
+        <createTable tableName="MinimizationConstraintTreatmentCounts">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="MinimizationConstraintId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TreatmentId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="Count" type="DOUBLE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="dschrimpf" id="org.randi3.method.minimization-0.9.3-4">
+        <createTable tableName="MinimizationTrialSites">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="MinimizationId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TrialSiteId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="dschrimpf" id="org.randi3.method.minimization-0.9.3-5">
+        <createTable tableName="MinimizationSiteTreatmentCounts">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="MinimizationTrialSiteId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="TreatmentId" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="Count" type="DOUBLE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet author="dschrimpf" id="org.randi3.method.minimization-0.9.3-6">
+         <addForeignKeyConstraint baseColumnNames="RandomizationMethodId" baseTableName="Minimization" constraintName="MinimizationFK_RandomizationMethod" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="RandomizationMethod" referencesUniqueColumn="false"/>
+
+         <addForeignKeyConstraint baseColumnNames="MinimizationId" baseTableName="MinimizationConstraint" constraintName="MinimizationConstraintFK_Minimization" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="Minimization" referencesUniqueColumn="false"/>
+         <addForeignKeyConstraint baseColumnNames="ConstraintId" baseTableName="MinimizationConstraint" constraintName="MinimizationFK_Constraint" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="Constraints" referencesUniqueColumn="false"/>
+
+         <addForeignKeyConstraint baseColumnNames="MinimizationConstraintId" baseTableName="MinimizationConstraintTreatmentCounts" constraintName="MinimizationConstraintTreatmentFK_Constraint" deferrable="false" initiallyDeferred="false" onDelete="CASCADE" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="MinimizationConstraint" referencesUniqueColumn="false"/>
+         <addForeignKeyConstraint baseColumnNames="TreatmentId" baseTableName="MinimizationConstraintTreatmentCounts" constraintName="MinimizationConstraintTreatmentFK_Treatment" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="TreatmentArms" referencesUniqueColumn="false"/>
+
+         <addForeignKeyConstraint baseColumnNames="MinimizationId" baseTableName="MinimizationTrialSites" constraintName="MinimizationTrialSitesFK_Minimization" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="Minimization" referencesUniqueColumn="false"/>
+         <addForeignKeyConstraint baseColumnNames="TrialSiteId" baseTableName="MinimizationTrialSites" constraintName="MinimizationFK_TrialSite" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="TrialSites" referencesUniqueColumn="false"/>
+
+        <addForeignKeyConstraint baseColumnNames="MinimizationTrialSiteId" baseTableName="MinimizationSiteTreatmentCounts" constraintName="MinimizationSiteTreatmentFK_Constraint" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="MinimizationTrialSites" referencesUniqueColumn="false"/>
+        <addForeignKeyConstraint baseColumnNames="TreatmentId" baseTableName="MinimizationSiteTreatmentCounts" constraintName="MinimizationSiteTreatmentFK_Treatment" deferrable="false" initiallyDeferred="false" onDelete="NO ACTION" onUpdate="NO ACTION" referencedColumnNames="id" referencedTableName="TreatmentArms" referencesUniqueColumn="false"/>
+    </changeSet>
+
 </databaseChangeLog>

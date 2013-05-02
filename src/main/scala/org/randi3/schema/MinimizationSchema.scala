@@ -18,16 +18,16 @@ class MinimizationSchema(driver: ExtendedProfile) {
 
   val schema = new DatabaseSchema(driver)
 
-  object Minimization extends Table[(Int, Int, Option[Int], Option[Double], Option[Long], Array[Byte])]("Minimization") {
+  object Minimizations extends Table[(Int, Int, Option[Int], Double, Long, Array[Byte])]("Minimization") {
     def id = column[Int]("id", O PrimaryKey, O AutoInc)
 
     def version = column[Int]("Version", O NotNull)
 
     def randomizationMethodId = column[Option[Int]]("RandomizationMethodId")
 
-    def p = column[Option[Double]]("ProbPreferredTreatment", O Nullable)
+    def p = column[Double]("ProbPreferredTreatment", O Nullable)
 
-    def seedRandomEqualScore = column[Option[Long]]("SeedRandomEqualScore", O Nullable)
+    def seedRandomEqualScore = column[Long]("SeedRandomEqualScore", O NotNull)
 
     def randomEqualScoreGenerator = column[Array[Byte]]("RandomGenerator", O NotNull)(PostgresByteArrayTypeMapper)
 
@@ -39,18 +39,18 @@ class MinimizationSchema(driver: ExtendedProfile) {
   }
 
 
-  object MinimizationConstraints extends Table[(Int, Option[Int], Int)]("MinimizationConstraint") {
+  object MinimizationConstraints extends Table[(Int, Int, Int)]("MinimizationConstraint") {
     def id = column[Int]("id", O PrimaryKey, O AutoInc)
 
-    def randomizationMethodId = column[Option[Int]]("RandomizationMethodId")
+    def minimizationId = column[Int]("MinimizationId")
 
     def constraintId = column[Int]("ConstraintId")
 
-    def * = id ~ randomizationMethodId ~ constraintId
+    def * = id ~ minimizationId ~ constraintId
 
-    def noId = randomizationMethodId ~ constraintId
+    def noId = minimizationId ~ constraintId
 
-    def randomizationMethod = foreignKey("MinimizationConstraintFK_RandomizationMethod", randomizationMethodId, schema.RandomizationMethods)(_.id)
+    def randomizationMethod = foreignKey("MinimizationConstraintFK_Minimization", minimizationId, Minimizations)(_.id)
 
     def constraint = foreignKey("MinimizationFK_Constraint", constraintId, schema.Constraints)(_.id)
   }
@@ -74,18 +74,18 @@ class MinimizationSchema(driver: ExtendedProfile) {
   }
 
 
-  object MinimizationTrialSites extends Table[(Int, Option[Int], Int)]("MinimizationTrialSites") {
+  object MinimizationTrialSites extends Table[(Int, Int, Int)]("MinimizationTrialSites") {
     def id = column[Int]("id", O PrimaryKey, O AutoInc)
 
-    def randomizationMethodId = column[Option[Int]]("RandomizationMethodId")
+    def minimizationId = column[Int]("MinimizationId")
 
     def trialSiteId = column[Int]("TrialSiteId")
 
-    def * = id ~ randomizationMethodId ~ trialSiteId
+    def * = id ~ minimizationId ~ trialSiteId
 
-    def noId = randomizationMethodId ~ trialSiteId
+    def noId = minimizationId ~ trialSiteId
 
-    def randomizationMethod = foreignKey("MinimizationTrialSitesFK_RandomizationMethod", randomizationMethodId, schema.RandomizationMethods)(_.id)
+    def randomizationMethod = foreignKey("MinimizationTrialSitesFK_Minimization", minimizationId, Minimizations)(_.id)
 
     def trialSite = foreignKey("MinimizationFK_TrialSite", trialSiteId, schema.TrialSites)(_.id)
   }
@@ -94,19 +94,19 @@ class MinimizationSchema(driver: ExtendedProfile) {
   object MinimizationSiteTreatments extends Table[(Int, Int, Int, Double)]("MinimizationSiteTreatmentCounts") {
     def id = column[Int]("id", O PrimaryKey, O AutoInc)
 
-    def minimizationTrialSiteId = column[Int]("MinimizationConstraintId")
+    def minimizationTrialSiteId = column[Int]("MinimizationTrialSiteId")
 
-    def siteId = column[Int]("TrialSiteId")
+    def treatmentId = column[Int]("TreatmentId")
 
     def count = column[Double]("Count")
 
-    def * = id ~ minimizationTrialSiteId ~ siteId ~ count
+    def * = id ~ minimizationTrialSiteId ~ treatmentId ~ count
 
-    def noId = minimizationTrialSiteId ~ siteId ~ count
+    def noId = minimizationTrialSiteId ~ treatmentId ~ count
 
     def minimizationConstraint = foreignKey("MinimizationSiteTreatmentFK_Constraint", minimizationTrialSiteId, MinimizationTrialSites)(_.id)
 
-    def treatment = foreignKey("MinimizationSiteTreatmentFK_Treatment", siteId, schema.TrialSites)(_.id)
+    def treatment = foreignKey("MinimizationSiteTreatmentFK_Treatment", treatmentId, schema.TrialSites)(_.id)
   }
 
 
