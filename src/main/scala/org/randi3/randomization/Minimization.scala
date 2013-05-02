@@ -13,7 +13,7 @@ import org.randi3.model.criterion.Criterion
 case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, seedRandomEqualScore: Long)(val random: RandomGenerator, val  randomEqualScore: RandomGenerator) extends RandomizationMethod {
 
 
-  var probabilitiesPerPreferredTreatment: mutable.Map[Int, mutable.Map[Int, Double]] = null
+  private var probabilitiesPerPreferredTreatment: mutable.Map[Int, mutable.Map[Int, Double]] = null
 
   var countConstraints: Map[Constraint[Any], mutable.Map[Int, Double]] = null
 
@@ -21,9 +21,10 @@ case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, see
 
 
   def randomize(trial: Trial, subject: TrialSubject): TreatmentArm = {
+
     if (probabilitiesPerPreferredTreatment == null) initProbabilitiesPerPreferredTreatment(trial)
-    if (countConstraints == null) initCountPerConstraint(trial)
-    if (countTrialSites == null) initCountTrialSite(trial)
+    if (countConstraints == null || countConstraints.isEmpty) initCountPerConstraint(trial)
+    if ((countTrialSites == null || countTrialSites.isEmpty) && trial.isStratifiedByTrialSite) initCountTrialSite(trial)
 
     doRandomizeBiasedCoinMinimization(trial, subject)
 
@@ -31,10 +32,13 @@ case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, see
 
   private def doRandomizeBiasedCoinMinimization(trial: Trial, subject: TrialSubject): TreatmentArm = {
 
+
     val relevantConstraints: Map[Constraint[Any], mutable.Map[Int, Double]] = countConstraints.filter(entry => {
       val constraintIds = subject.properties.map(prop => prop.criterion.asInstanceOf[Criterion[Any, Constraint[Any]]].stratify(prop.value).get).map(constraint => constraint.id)
+
       constraintIds.contains(entry._1.id)
     })
+
 
 
     val relevantTrialSite: Map[Int, Double] = if (trial.isStratifiedByTrialSite) {
@@ -115,16 +119,15 @@ case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, see
       i += 1
     }
 
-
     //increase counter
     for (constraint <- relevantConstraints.keySet) {
-      countConstraints.get(constraint).get.put(arm.id, (countConstraints.get(constraint).get.get(arm.id).get + 1.0))
+     countConstraints.get(constraint).get.put(arm.id, (countConstraints.get(constraint).get.get(arm.id).get + 1.0))
     }
     if (trial.isStratifiedByTrialSite) {
       countTrialSites.get(subject.trialSite).get.put(arm.id, countTrialSites.get(subject.trialSite).get.get(arm.id).get + 1.0)
     }
 
-    arm
+        arm
   }
 
 
@@ -133,7 +136,6 @@ case class Minimization(id: Int = Int.MinValue, version: Int = 0, p: Double, see
     countConstraints = trial.criterions.flatMap(criterion => criterion.strata.toSeq).map(constraint => {
       constraint.asInstanceOf[Constraint[Any]] -> mutable.Map(trial.treatmentArms.map(arm => arm.id -> 0.0).toSeq: _*)
     }).toMap
-
   }
 
   private def initCountTrialSite(trial: Trial) {

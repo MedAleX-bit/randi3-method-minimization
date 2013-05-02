@@ -31,7 +31,7 @@ class MinimizationTest extends FunSpec with MustMatchers {
         "dummy:3", "dummy:2", "dummy:3", "dummy:1", "dummy:2",
         "dummy:3", "dummy:2", "dummy:3", "dummy:3", "dummy:3",
         "dummy:2", "dummy:3", "dummy:3", "dummy:3", "dummy:3",
-        "dummy:3", "dummy:2", "dummy:3", "dummy:3", "dummy:3");
+        "dummy:3", "dummy:2", "dummy:3", "dummy:3", "dummy:3")
 
       val arm1 = createTreatmentArm.copy(id = 1, name = "dummy:1", plannedSize = 10)
       val arm2 = createTreatmentArm.copy(id = 2, name = "dummy:2", plannedSize = 20)
