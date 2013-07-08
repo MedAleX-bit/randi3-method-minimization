@@ -4,8 +4,7 @@ import org.apache.commons.math3.random.{JDKRandomGenerator, MersenneTwister}
 
 import org.junit.runner.RunWith
 
-import org.scalaquery.ql._
-import org.scalaquery.session.Database.threadLocalSession
+import scala.slick.session.Database.threadLocalSession
 
 
 import org.scalatest.matchers.{ShouldMatchers, MustMatchers}
@@ -21,10 +20,11 @@ import org.randi3.model.criterion.OrdinalCriterion
 import java.util.Random
 import org.randi3.model.{TrialSubject, SubjectProperty}
 import java.io.{ObjectOutputStream, ByteArrayOutputStream}
+import scala.slick.lifted.Query
 
 
 @RunWith(classOf[JUnitRunner])
-class MinimizationDaoSpec extends FunSpec with MustMatchers with ShouldMatchers {
+class MinimizationDaoSpec extends FunSpec with MustMatchers {
 
   import org.randi3.utility.TestingEnvironmentMinimization._
 
@@ -37,7 +37,7 @@ class MinimizationDaoSpec extends FunSpec with MustMatchers with ShouldMatchers 
     it("should be able to create a new minimization method with parameter and without tmp data") {
       val randomizationMethod: Minimization = new Minimization(p = 0.78, seedRandomEqualScore = 1234)(random = new MersenneTwister, randomEqualScore = new MersenneTwister(1234))
       val trialDB = trialDao.get(trialDao.create(createTrial.copy(randomizationMethod = None)).toOption.get).toOption.get.get
-      val id = minimizationDao.create(randomizationMethod, trialDB.id).either match {
+      val id = minimizationDao.create(randomizationMethod, trialDB.id).toEither match {
         case Left(x) => fail(x)
         case Right(id) => id
       }
@@ -65,7 +65,7 @@ class MinimizationDaoSpec extends FunSpec with MustMatchers with ShouldMatchers 
     it("should be able to get a minimization method with parameters and without tmp data (no subject randomized)") {
       val randomizationMethod: Minimization = new Minimization(p = 0.78, seedRandomEqualScore = 1234)(random = new MersenneTwister, randomEqualScore = new MersenneTwister(1234))
       val trialDB = trialDao.get(trialDao.create(createTrial.copy(randomizationMethod = None)).toOption.get).toOption.get.get
-      val id = minimizationDao.create(randomizationMethod, trialDB.id).either match {
+      val id = minimizationDao.create(randomizationMethod, trialDB.id).toEither match {
         case Left(x) => fail(x)
         case Right(id) => id
       }

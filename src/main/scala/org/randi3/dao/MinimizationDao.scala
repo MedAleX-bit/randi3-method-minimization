@@ -1,12 +1,10 @@
 package org.randi3.dao
 
-import org.scalaquery.session._
-import org.scalaquery.session.Database.threadLocalSession
-import org.scalaquery.ql._
-import org.scalaquery.ql.TypeMapper._
-import org.scalaquery.ql.extended.ExtendedProfile
 
-import org.randi3.randomization.Minimization
+import scala.slick.session.Database.threadLocalSession
+
+import scala.slick.driver.ExtendedProfile
+
 import scala.collection.mutable.ListBuffer
 import scalaz._
 import org.randi3.schema.{DatabaseSchema, MinimizationSchema}
@@ -14,18 +12,7 @@ import org.randi3.model.criterion.constraint._
 import scala.collection.mutable
 import org.randi3.model.{Trial, TrialSite}
 import org.joda.time.LocalDate
-import scala.Left
-import scalaz.Failure
-import scala.Some
-import scalaz.Success
-import org.randi3.randomization.Minimization
-import scala.Right
-import scala.Left
-import scalaz.Failure
-import scala.Some
-import scalaz.Success
-import org.randi3.randomization.Minimization
-import scala.Right
+
 import scala.Left
 import scalaz.Failure
 import scala.Some
@@ -33,6 +20,8 @@ import scalaz.Success
 import org.randi3.model.criterion.constraint.Constraint
 import org.randi3.randomization.Minimization
 import scala.Right
+import scala.slick.session.Database
+import scala.slick.lifted.{Query, Parameters}
 
 class MinimizationDao(database: Database, driver: ExtendedProfile) extends AbstractRandomizationMethodDao(database, driver) {
 
@@ -78,7 +67,7 @@ private def queryCountTrialSiteFromSiteId(siteId: Int) = Query(MinimizationTrial
           val seed = randomizationMethod.random.nextLong()
           randomizationMethod.random.setSeed(seed)
           RandomizationMethods.noId insert(trialId, generateBlob(randomizationMethod.random).get, randomizationMethod.getClass().getName(), seed)
-          val id = getId(trialId).either match {
+          val id = getId(trialId).toEither match {
             case Left(x) => return Failure(x)
             case Right(id1) => id1
           }
@@ -301,7 +290,7 @@ private def queryCountTrialSiteFromSiteId(siteId: Int) = Query(MinimizationTrial
 
 
     }
-    get(randomizationMethod.id).either match {
+    get(randomizationMethod.id).toEither match {
       case Left(x) => Failure(x)
       case Right(None) => Failure("Method not found")
       case Right(Some(minimizationMethod)) => Success(minimizationMethod)

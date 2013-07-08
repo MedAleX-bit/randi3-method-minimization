@@ -5,15 +5,16 @@ import org.randi3.dao.MinimizationDao
 import org.randi3.model._
 import org.randi3.model.criterion.Criterion
 import org.randi3.model.criterion.constraint.Constraint
-import org.scalaquery.ql._
-import org.scalaquery.ql.extended.ExtendedProfile
-import org.scalaquery.session.Database
+
+import scala.slick.driver.ExtendedProfile
+import scala.slick.session.Database
 import scalaz._
 
 import org.apache.commons.math3.random._
 
 import org.randi3.schema.{LiquibaseUtil, MinimizationSchema}
 import org.randi3.utility.{I18NHelper, I18NRandomization, AbstractSecurityUtil}
+import scala.slick.lifted.DDL
 
 class MinimizationPlugin(database: Database, driver: ExtendedProfile, securityUtil: AbstractSecurityUtil) extends RandomizationMethodPlugin(database, driver, securityUtil) {
 
