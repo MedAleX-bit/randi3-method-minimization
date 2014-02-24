@@ -78,7 +78,7 @@ class MinimizationDaoSpec extends FunSpec with MustMatchers {
       randomizationMethodDB.toOption.get.get.random.nextDouble() must be(randomizationMethod.random.nextDouble())
     }
 
-    it("TODO should be able to get a minimization method with parameter and with tmp data (dependency with update method)") {
+    it("should be able to get a minimization method with parameter and with tmp data (dependency with update method)") {
       val allocationSequence = List("dummy:3", "dummy:2", "dummy:3", "dummy:1", "dummy:3",
         "dummy:1", "dummy:3", "dummy:3", "dummy:3", "dummy:3",
         "dummy:2", "dummy:2", "dummy:1", "dummy:3", "dummy:2",
